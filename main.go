@@ -155,18 +155,23 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func createPelipaivaPoll(s *discordgo.Session, channelID string, color int, vihollinen string) {
 	now := time.Now()
+
+	// Find Monday of the current week
 	offset := int(time.Monday - now.Weekday())
 	if offset > 0 {
 		offset = -6
 	}
-	monday := now.AddDate(0, 0, offset)
+	currentMonday := now.AddDate(0, 0, offset)
+
+	// Move to next week
+	nextMonday := currentMonday.AddDate(0, 0, 7)
 
 	weekdayFi := []string{"Maanantai", "Tiistai", "Keskiviikko", "Torstai", "Perjantai", "Lauantai", "Sunnuntai"}
-	emojis := []string{"1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣"} // one emoji per weekday
+	emojis := []string{"1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣"}
 
 	var answers []discordgo.PollAnswer
 	for i := 0; i < 7; i++ {
-		day := monday.AddDate(0, 0, i)
+		day := nextMonday.AddDate(0, 0, i)
 		formatted := fmt.Sprintf("%s %d.%d.", weekdayFi[i], day.Day(), int(day.Month()))
 		answers = append(answers, discordgo.PollAnswer{
 			Media: &discordgo.PollMedia{
@@ -176,7 +181,7 @@ func createPelipaivaPoll(s *discordgo.Session, channelID string, color int, viho
 		})
 	}
 
-	// Add "Ei käy" option with ❌
+	// Add "Ei käy" option
 	answers = append(answers, discordgo.PollAnswer{
 		Media: &discordgo.PollMedia{
 			Text:  "Ei käy",
@@ -184,7 +189,8 @@ func createPelipaivaPoll(s *discordgo.Session, channelID string, color int, viho
 		},
 	})
 
-	_, week := now.ISOWeek()
+	// Use ISOWeek of next week
+	_, week := nextMonday.ISOWeek()
 	description := fmt.Sprintf("Viikon %d pelipäivä. Oletusaloitus 19-20. Ilmoita jos aika ei käy. Vihollinen %s.", week, vihollinen)
 
 	poll := &discordgo.MessageSend{
