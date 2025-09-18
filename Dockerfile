@@ -19,6 +19,12 @@ RUN go build -o bot .
 # Set environment variables (can be overridden at runtime)
 ENV DISCORD_BOT_TOKEN=""
 ENV DISCORD_GUILD_ID=""
+ENV WEBHOOK_AUTH_TOKEN=""
+ENV FACEIT_API_KEY=""
+ENV DISCORD_MATCH_CHANNEL=""
+
+# Expose the port for the webhook server
+EXPOSE 8080
 
 # Run the bot
 CMD ["./bot"]
