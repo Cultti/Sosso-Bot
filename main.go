@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// Start database
-	db.Init("data.db")
+	db.Init("./data/data.db")
 
 	// Start Discord bot
 	ds, err := discord.Start()
