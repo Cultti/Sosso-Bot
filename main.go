@@ -5,12 +5,16 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sosso/db"
 	"sosso/discord"
 	"sosso/web"
 	"syscall"
 )
 
 func main() {
+	// Start database
+	db.Init("data.db")
+
 	// Start Discord bot
 	ds, err := discord.Start()
 	if err != nil {

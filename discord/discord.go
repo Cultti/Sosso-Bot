@@ -2,8 +2,11 @@ package discord
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"sosso/db"
 	"sosso/faceit"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,6 +47,7 @@ func Start() (*discordgo.Session, error) {
 
 	// register commands
 	registerCommands(sess, guildID)
+
 	return sess, nil
 }
 
@@ -75,6 +79,33 @@ func registerCommands(s *discordgo.Session, guildID string) {
 			fmt.Println("Command create error:", err)
 		}
 	}
+
+	s.ApplicationCommandCreate(s.State.User.ID, "", &discordgo.ApplicationCommand{
+		Name:        "subscribe",
+		Description: "Subscribe to Pappaliiga matches",
+		Options: []*discordgo.ApplicationCommandOption{{
+			Type:        discordgo.ApplicationCommandOptionString,
+			Name:        "liiga",
+			Description: "Liiga muodossa '20 Divisioona S11'",
+			Required:    true,
+		}},
+	})
+
+	s.ApplicationCommandCreate(s.State.User.ID, guildID, &discordgo.ApplicationCommand{
+		Name:        "unsubscribe",
+		Description: "Unsubscribe to Pappaliiga matches",
+		Options: []*discordgo.ApplicationCommandOption{{
+			Type:        discordgo.ApplicationCommandOptionString,
+			Name:        "liiga",
+			Description: "Liiga muodossa '20 Divisioona S11'",
+			Required:    false,
+		}},
+	})
+
+	s.ApplicationCommandCreate(s.State.User.ID, guildID, &discordgo.ApplicationCommand{
+		Name:        "subscriptions",
+		Description: "Lists subscriptions for this channel",
+	})
 }
 
 func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -87,14 +118,46 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		userID = i.User.ID
 	}
 
-	if !allowed[userID] {
+	isAllowed := allowed[userID]
+
+	if i.GuildID != "" && !isAllowed {
+		// Fetch guild info to check owner
+		guild, err := s.State.Guild(i.GuildID)
+		if err != nil {
+			guild, err = s.Guild(i.GuildID) // fallback to API call if not in state
+			if err != nil {
+				log.Println("Failed to fetch guild info:", err)
+			}
+		}
+
+		if guild != nil && guild.OwnerID == userID {
+			isAllowed = true
+		}
+	}
+
+	if !isAllowed {
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: "❌ Et voi käyttää tätä komentoa.",
-				Flags:   1 << 6,
+				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
+		return
+	}
+
+	if i.ApplicationCommandData().Name == "subscribe" {
+		handleSubscribeCommand(s, i)
+		return
+	}
+
+	if i.ApplicationCommandData().Name == "unsubscribe" {
+		handleUnsubscribeCommand(s, i)
+		return
+	}
+
+	if i.ApplicationCommandData().Name == "subscriptions" {
+		handleSubscriptions(s, i)
 		return
 	}
 
@@ -105,7 +168,7 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: "📊 Luodaan viikon pelipäivä -äänestys...",
-				Flags:   1 << 6,
+				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
 		createPelipaivaPoll(s, i.ChannelID, vihollinen)
@@ -116,10 +179,119 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: "📊 Luodaan harkkapäivä -äänestys...",
-				Flags:   1 << 6,
+				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
 		createHarkkaPoll(s, i.ChannelID, kuvaus)
+	}
+}
+
+func handleSubscribeCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "⚒ Käsitellään pyyntöä...",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+
+	guildId := i.GuildID
+	channelId := i.ChannelID
+	league := i.ApplicationCommandData().Options[0].StringValue()
+
+	err := db.CreateSubscription(&db.Subscription{
+		GuildID:   guildId,
+		ChannelID: channelId,
+		League:    league,
+	})
+	if err != nil {
+		content := "❌ Tilauksen luonti epäonnistui"
+
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
+		})
+		return
+	}
+
+	content := "✔ Tilauksen onnistui"
+
+	_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
+	})
+}
+
+func handleUnsubscribeCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "⚒ Käsitellään pyyntöä...",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+
+	guildId := i.GuildID
+	channelId := i.ChannelID
+
+	var league string
+	if len(i.ApplicationCommandData().Options) == 1 {
+		league = i.ApplicationCommandData().Options[0].StringValue()
+	}
+
+	deletedLeagues, err := db.DeleteSubscriptionsByGuildChannel(guildId, channelId, league)
+	if err != nil {
+		content := "❌ Tilauksen peruminen epäonnistui"
+
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
+		})
+		return
+	} else if len(deletedLeagues) == 0 {
+		content := "❔ Tilauksia ei löytynyt"
+
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
+		})
+	} else {
+		content := "✔ Poistetut tilaukset: " + strings.Join(deletedLeagues, ", ")
+
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
+		})
+	}
+}
+
+func handleSubscriptions(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "⚒ Käsitellään pyyntöä...",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+
+	subs, err := db.GetSubscriptionsByGuildChannel(i.GuildID, i.ChannelID)
+	if err != nil {
+		content := "❌ Pyyntö epäonnistui"
+
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
+		})
+	} else if len(*subs) == 0 {
+		content := "❔ Tilauksia ei löytynyt"
+
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
+		})
+	} else {
+		leagues := make([]string, len(*subs))
+		for i, s := range *subs {
+			leagues[i] = s.League
+		}
+		content := "✔ Tämän kanavan tilaukset: " + strings.Join(leagues, ", ")
+
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
+		})
 	}
 }
 
@@ -195,70 +367,159 @@ func createHarkkaPoll(s *discordgo.Session, channelID, kuvaus string) {
 	}
 }
 
-func SendMessageInfo(s *discordgo.Session, matchId string) {
+func SendMessageInfo(s *discordgo.Session, matchId string, league string) {
+	// Fetch match info
 	match, err := faceit.FetchMatchInfo(matchId)
 	if err != nil {
+		fmt.Println("Error fetching match info:", err)
 		return
 	}
 
-	embed := buildMatchEmbed(match)
+	// Build the embed once
+	embed := buildMatchEmbed(match, league)
 
-	_, err = s.ChannelMessageSendEmbed(MatchChannel, embed)
+	// Fetch all subscriptions for this league
+	subs, err := db.GetSubscriptionsByLeague(league)
 	if err != nil {
-		fmt.Println("Error sending Discord embed:", err)
+		fmt.Println("Error fetching subscriptions:", err)
+		return
+	}
+
+	if subs == nil || len(*subs) == 0 {
+		fmt.Println("No subscriptions found for league:", league)
+		return
+	}
+
+	// Send embed to each channel in the subscriptions
+	for _, sub := range *subs {
+		_, err := s.ChannelMessageSendEmbed(sub.ChannelID, embed)
+		if err != nil {
+			fmt.Printf("Error sending embed to channel %s: %v\n", sub.ChannelID, err)
+		}
 	}
 }
 
-// buildMatchEmbed builds a beautiful embed for a finished match
-func buildMatchEmbed(m *faceit.Match) *discordgo.MessageEmbed {
-	winnerName := m.Teams[m.Results.Winner].Name
-
-	// --- Lineups ---
-	var lineupFields []*discordgo.MessageEmbedField
-	for key, team := range m.Teams {
-		var nicks []string
-		for _, p := range team.Roster {
-			nicks = append(nicks, p.Nickname)
+func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed {
+	if len(m.Rounds) == 0 {
+		return &discordgo.MessageEmbed{
+			Title:       "Match info unavailable",
+			Description: "No rounds were found for this match.",
+			Color:       0xff0000,
 		}
-		score := m.Results.Score[key]
-		lineupFields = append(lineupFields, &discordgo.MessageEmbedField{
-			Name:   fmt.Sprintf("%s (score %d)", team.Name, score),
-			Value:  strings.Join(nicks, ", "),
-			Inline: false,
-		})
 	}
 
-	// --- Maps / results ---
+	// Use first round just for team names (IDs should be stable)
+	if len(m.Rounds[0].Teams) < 2 {
+		return &discordgo.MessageEmbed{
+			Title:       "Match info unavailable",
+			Description: "Not enough team data.",
+			Color:       0xff0000,
+		}
+	}
+	team1 := m.Rounds[0].Teams[0].TeamStats.Team
+	team2 := m.Rounds[0].Teams[1].TeamStats.Team
+
+	// Stats containers
+	wins := map[string]int{team1: 0, team2: 0}
+	roundsFor := map[string]int{team1: 0, team2: 0}
+	roundsAgainst := map[string]int{team1: 0, team2: 0}
+
+	// Player sets
+	seen1 := make(map[string]bool)
+	seen2 := make(map[string]bool)
+	var players1, players2 []string
+
+	// Build map lines and gather players
 	var mapLines []string
-	for i, mp := range m.Voting.Map.Pick {
-		scoreInfo := ""
-		if i < len(m.DetailedResults) {
-			dr := m.DetailedResults[i]
-			s1 := dr.Factions["faction1"].Score
-			s2 := dr.Factions["faction2"].Score
-			scoreInfo = fmt.Sprintf(" — %d:%d (winner: %s)",
-				s1, s2, m.Teams[dr.Winner].Name)
+	for _, r := range m.Rounds {
+		if len(r.Teams) < 2 {
+			continue
 		}
-		mapLines = append(mapLines, fmt.Sprintf("• `%s`%s", mp, scoreInfo))
+
+		t1 := r.Teams[0]
+		t2 := r.Teams[1]
+
+		// Scores
+		s1, _ := strconv.Atoi(t1.TeamStats.FinalScore)
+		s2, _ := strconv.Atoi(t2.TeamStats.FinalScore)
+
+		// Wins
+		w1, _ := strconv.Atoi(t1.TeamStats.TeamWin)
+		w2, _ := strconv.Atoi(t2.TeamStats.TeamWin)
+		wins[t1.TeamStats.Team] += w1
+		wins[t2.TeamStats.Team] += w2
+
+		// Round totals
+		roundsFor[t1.TeamStats.Team] += s1
+		roundsFor[t2.TeamStats.Team] += s2
+		roundsAgainst[t1.TeamStats.Team] += s2
+		roundsAgainst[t2.TeamStats.Team] += s1
+
+		// Map line
+		mapLines = append(mapLines, fmt.Sprintf("`%s`  %d:%d", r.RoundStats.Map, s1, s2))
+
+		// Players (avoid duplicates)
+		for _, p := range t1.Players {
+			if !seen1[p.Nickname] {
+				seen1[p.Nickname] = true
+				players1 = append(players1, fmt.Sprintf("- %s", p.Nickname))
+			}
+		}
+		for _, p := range t2.Players {
+			if !seen2[p.Nickname] {
+				seen2[p.Nickname] = true
+				players2 = append(players2, fmt.Sprintf("- %s", p.Nickname))
+			}
+		}
 	}
+
+	// Decide emojis
+	var emoji1, emoji2 string
+	switch {
+	case wins[team1] > wins[team2]:
+		emoji1, emoji2 = "🏆", "💔"
+	case wins[team1] < wins[team2]:
+		emoji1, emoji2 = "💔", "🏆"
+	default:
+		emoji1, emoji2 = "🤝", "🤝"
+	}
+
+	// Round diff
+	diff1 := roundsFor[team1] - roundsAgainst[team1]
+	diff2 := roundsFor[team2] - roundsAgainst[team2]
+
+	title := fmt.Sprintf("%s %s vs %s %s", emoji1, team1, team2, emoji2)
 
 	return &discordgo.MessageEmbed{
-		Title:       "🎯 FaceIT Match Finished",
-		Description: fmt.Sprintf("League: **%s**\nWinner: **%s**\nStatus: %s", m.CompetitionName, winnerName, m.Status),
-		Color:       0x2ecc71, // green
-		Fields: append(
-			[]*discordgo.MessageEmbedField{
-				{
-					Name:   "Maps",
-					Value:  strings.Join(mapLines, "\n"),
-					Inline: false,
-				},
+		Title:       title,
+		Description: league,
+		Color:       0x2ecc71,
+		URL:         m.FaceitURL(),
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:  "Maps & Scores",
+				Value: strings.Join(mapLines, "\n"),
 			},
-			lineupFields...,
-		),
-		Footer: &discordgo.MessageEmbedFooter{
-			Text: "Powered by FaceIT API",
+			{
+				Name: team1,
+				Value: fmt.Sprintf(
+					"Rounds: **%d**\nDiff: **%+d**\n\n%s",
+					roundsFor[team1],
+					diff1,
+					strings.Join(players1, "\n"),
+				),
+				Inline: true,
+			},
+			{
+				Name: team2,
+				Value: fmt.Sprintf(
+					"Rounds: **%d**\nDiff: **%+d**\n\n%s",
+					roundsFor[team2],
+					diff2,
+					strings.Join(players2, "\n"),
+				),
+				Inline: true,
+			},
 		},
-		URL: m.FaceitURL(),
 	}
 }

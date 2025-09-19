@@ -87,7 +87,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("processing"))
 
 		// Process Discord message in background
-		go discord.SendMessageInfo(BotSession, e.Payload.ID)
+		go discord.SendMessageInfo(BotSession, e.Payload.ID, e.Payload.Entity.Name)
 		return
 	}
 

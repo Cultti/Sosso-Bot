@@ -16,6 +16,9 @@ COPY . .
 # Build the Go binary
 RUN go build -o bot .
 
+# Declare data volume for persistence
+VOLUME /app/data
+
 # Set environment variables (can be overridden at runtime)
 ENV DISCORD_BOT_TOKEN=""
 ENV DISCORD_GUILD_ID=""
