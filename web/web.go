@@ -79,8 +79,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	// Check event and return code immediately
 	if e.Event == "match_status_finished" &&
-		e.Payload.Game == "cs2" &&
-		e.Payload.Entity.Name == "20 Divisioona S11" {
+		e.Payload.Game == "cs2" {
 
 		status = http.StatusAccepted
 		w.WriteHeader(status)
