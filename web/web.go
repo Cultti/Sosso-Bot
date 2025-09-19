@@ -3,9 +3,11 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"sosso/discord"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -44,30 +46,51 @@ func Start(addr string, ds *discordgo.Session) error {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	status := http.StatusOK
+
+	// Always log the request at the end
+	defer func() {
+		log.Printf("[Webhook] %s %s -> %d (%s)", r.Method, r.URL.Path, status, time.Since(start))
+	}()
+
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		status = http.StatusMethodNotAllowed
+		http.Error(w, "method not allowed", status)
 		return
 	}
+
 	if r.Header.Get("Authorization") != "Bearer "+authToken {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		status = http.StatusUnauthorized
+		http.Error(w, "unauthorized", status)
 		return
 	}
 
 	var e EventRequest
 	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		status = http.StatusBadRequest
+		http.Error(w, "bad request", status)
 		return
 	}
 
-	if e.Event == "match_status_finished" && e.Payload.Game == "cs2" && e.Payload.Entity.Name == "20 Divisioona S11" {
-		fmt.Printf("[Webhook] Event: %s | ID: %s | Game: %s | Entity: %s\n",
-			e.Event, e.Payload.ID, e.Payload.Game, e.Payload.Entity.Name)
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+	// Log resolved event info
+	log.Printf("[Webhook] Received event: %s | ID: %s | Game: %s | Entity: %s",
+		e.Event, e.Payload.ID, e.Payload.Game, e.Payload.Entity.Name)
 
-		discord.SendMessageInfo(BotSession, e.Payload.ID)
+	// Check event and return code immediately
+	if e.Event == "match_status_finished" &&
+		e.Payload.Game == "cs2" &&
+		e.Payload.Entity.Name == "20 Divisioona S11" {
+
+		status = http.StatusAccepted
+		w.WriteHeader(status)
+		w.Write([]byte("processing"))
+
+		// Process Discord message in background
+		go discord.SendMessageInfo(BotSession, e.Payload.ID)
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	status = http.StatusNoContent
+	w.WriteHeader(status)
 }
