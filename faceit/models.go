@@ -97,3 +97,20 @@ type PlayerStats struct {
 	MatchOneVTwoWinRate              string `json:"Match 1v2 Win Rate"`
 	HeadshotsPercent                 string `json:"Headshots %"`
 }
+
+// ChampionshipResponse is the top-level response.
+type ChampionshipResponse struct {
+	Start int                `json:"start"`
+	End   int                `json:"end"`
+	Items []ChampionshipItem `json:"items"`
+}
+
+// ChampionshipItem is one championship record.
+type ChampionshipItem struct {
+	ChampionshipID string `json:"championship_id"`
+	Name           string `json:"name"`
+	GameID         string `json:"game_id"`
+	Region         string `json:"region"`
+	Status         string `json:"status"`
+	// 👉 Add other fields as needed (you can map the full JSON if you need everything)
+}

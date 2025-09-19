@@ -24,8 +24,13 @@ type Bot struct {
 }
 
 var MatchChannel string
+var championshipList []string
 
-func Start() (*discordgo.Session, error) {
+func Start(championships *[]faceit.ChampionshipItem) (*discordgo.Session, error) {
+	for _, item := range *championships {
+		championshipList = append(championshipList, item.Name)
+	}
+
 	token := os.Getenv("DISCORD_BOT_TOKEN")
 	guildID := os.Getenv("DISCORD_GUILD_ID")
 	MatchChannel = os.Getenv("DISCORD_MATCH_CHANNEL")
@@ -40,6 +45,7 @@ func Start() (*discordgo.Session, error) {
 	}
 
 	sess.AddHandler(interactionCreate)
+	sess.AddHandler(interactionHandle)
 
 	if err := sess.Open(); err != nil {
 		return nil, err
@@ -80,17 +86,6 @@ func registerCommands(s *discordgo.Session, guildID string) {
 		}
 	}
 
-	s.ApplicationCommandCreate(s.State.User.ID, "", &discordgo.ApplicationCommand{
-		Name:        "subscribe",
-		Description: "Subscribe to Pappaliiga matches",
-		Options: []*discordgo.ApplicationCommandOption{{
-			Type:        discordgo.ApplicationCommandOptionString,
-			Name:        "liiga",
-			Description: "Liiga muodossa '20 Divisioona S11'",
-			Required:    true,
-		}},
-	})
-
 	s.ApplicationCommandCreate(s.State.User.ID, guildID, &discordgo.ApplicationCommand{
 		Name:        "unsubscribe",
 		Description: "Unsubscribe to Pappaliiga matches",
@@ -104,8 +99,106 @@ func registerCommands(s *discordgo.Session, guildID string) {
 
 	s.ApplicationCommandCreate(s.State.User.ID, guildID, &discordgo.ApplicationCommand{
 		Name:        "subscriptions",
-		Description: "Lists subscriptions for this channel",
+		Description: "Manage subscriptions for this channel",
 	})
+}
+
+// userID_channelID -> menuID -> []selectedValues
+var tempSelections = map[string]map[string][]string{}
+
+func interactionHandle(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i.Type != discordgo.InteractionMessageComponent {
+		return
+	}
+
+	data := i.MessageComponentData()
+	userKey := i.Member.User.ID + "_" + i.ChannelID
+	menuID := data.CustomID
+	guildID := i.GuildID
+	channelID := i.ChannelID
+
+	// Initialize map
+	if _, exists := tempSelections[userKey]; !exists {
+		tempSelections[userKey] = make(map[string][]string)
+	}
+
+	// ---- Menu selection ----
+	if strings.HasPrefix(menuID, "champ_") {
+		// Save selections for this menu
+		tempSelections[userKey][menuID] = data.Values
+
+		// Merge all menu selections
+		merged := []string{}
+		for _, vals := range tempSelections[userKey] {
+			merged = append(merged, vals...)
+		}
+
+		// Rebuild menus
+		sortedList := sortChampionships(championshipList)
+		menus := buildSelectMenus(sortedList, merged)
+
+		// Append Save button
+		saveButton := discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				discordgo.Button{
+					Label:    "💾 Save",
+					Style:    discordgo.PrimaryButton,
+					CustomID: "save_subscriptions",
+				},
+			},
+		}
+		menus = append(menus, saveButton)
+
+		// Update ephemeral message
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseUpdateMessage,
+			Data: &discordgo.InteractionResponseData{
+				Content:    "✔ Valittu! Paina Save kun valmis.",
+				Components: menus,
+			},
+		})
+		return
+	}
+
+	// ---- Save button ----
+	if menuID == "save_subscriptions" {
+		// Merge all menu selections
+		finalSelections := make(map[string]struct{})
+		for _, vals := range tempSelections[userKey] {
+			for _, v := range vals {
+				finalSelections[v] = struct{}{}
+			}
+		}
+
+		selectedSlice := make([]string, 0, len(finalSelections))
+		for v := range finalSelections {
+			selectedSlice = append(selectedSlice, v)
+		}
+
+		// Clear all subscriptions for this channel
+		_, _ = db.DeleteSubscriptionsByGuildChannel(guildID, channelID, "")
+
+		// Add new selections
+		for _, league := range selectedSlice {
+			_ = db.CreateSubscription(&db.Subscription{
+				GuildID:   guildID,
+				ChannelID: channelID,
+				League:    league,
+			})
+		}
+
+		// Clear temporary selections
+		delete(tempSelections, userKey)
+
+		// Update ephemeral message
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseUpdateMessage,
+			Data: &discordgo.InteractionResponseData{
+				Content:    fmt.Sprintf("✔ Tilattu %d mestaruutta!", len(selectedSlice)),
+				Components: []discordgo.MessageComponent{},
+			},
+		})
+	}
 }
 
 func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -146,18 +239,13 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if i.ApplicationCommandData().Name == "subscribe" {
-		handleSubscribeCommand(s, i)
+	if i.ApplicationCommandData().Name == "subscriptions" {
+		handleSubscriontionsCommand(s, i)
 		return
 	}
 
 	if i.ApplicationCommandData().Name == "unsubscribe" {
 		handleUnsubscribeCommand(s, i)
-		return
-	}
-
-	if i.ApplicationCommandData().Name == "subscriptions" {
-		handleSubscriptions(s, i)
 		return
 	}
 
@@ -186,38 +274,123 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
-func handleSubscribeCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: "⚒ Käsitellään pyyntöä...",
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	})
+func handleSubscriontionsCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	userKey := i.Member.User.ID + "_" + i.ChannelID
 
-	guildId := i.GuildID
-	channelId := i.ChannelID
-	league := i.ApplicationCommandData().Options[0].StringValue()
+	// Always create a new tempSelections map for this user & channel
+	tempSelections[userKey] = make(map[string][]string)
 
-	err := db.CreateSubscription(&db.Subscription{
-		GuildID:   guildId,
-		ChannelID: channelId,
-		League:    league,
-	})
-	if err != nil {
-		content := "❌ Tilauksen luonti epäonnistui"
-
-		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &content,
-		})
-		return
+	// Load current subscriptions from DB
+	existingSubs, err := db.GetSubscriptionsByGuildChannel(i.GuildID, i.ChannelID)
+	var current []string
+	if err == nil {
+		current = make([]string, len(*existingSubs))
+		for idx, s := range *existingSubs {
+			current[idx] = s.League
+		}
 	}
 
-	content := "✔ Tilauksen onnistui"
+	// Pre-fill each menu chunk
+	const chunkSize = 25
+	for i := 0; i < len(championshipList); i += chunkSize {
+		menuID := fmt.Sprintf("champ_%d", i/chunkSize)
 
-	_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		Content: &content,
+		// Select the items from current subscriptions that belong to this chunk
+		end := i + chunkSize
+		if end > len(championshipList) {
+			end = len(championshipList)
+		}
+		chunk := championshipList[i:end]
+
+		selectedInChunk := []string{}
+		for _, name := range chunk {
+			for _, sel := range current {
+				if sel == name {
+					selectedInChunk = append(selectedInChunk, sel)
+					break
+				}
+			}
+		}
+
+		tempSelections[userKey][menuID] = selectedInChunk
+	}
+
+	// Merge all current selections for initial display
+	merged := []string{}
+	for _, vals := range tempSelections[userKey] {
+		merged = append(merged, vals...)
+	}
+
+	// Build select menus
+	sortedList := sortChampionships(championshipList)
+	menus := buildSelectMenus(sortedList, merged)
+
+	// Append Save button
+	saveButton := discordgo.ActionsRow{
+		Components: []discordgo.MessageComponent{
+			discordgo.Button{
+				Label:    "💾 Save",
+				Style:    discordgo.PrimaryButton,
+				CustomID: "save_subscriptions",
+			},
+		},
+	}
+	menus = append(menus, saveButton)
+
+	// Respond ephemerally
+	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content:    "Valitse mestaruuksia:",
+			Flags:      discordgo.MessageFlagsEphemeral,
+			Components: menus,
+		},
 	})
+}
+
+func buildSelectMenus(championshipList []string, currentSelections []string) []discordgo.MessageComponent {
+	// Build a set for fast lookup
+	selectedSet := make(map[string]struct{}, len(currentSelections))
+	for _, s := range currentSelections {
+		selectedSet[s] = struct{}{}
+	}
+
+	const chunkSize = 25
+	var menus []discordgo.MessageComponent
+
+	min := 0
+
+	for i := 0; i < len(championshipList); i += chunkSize {
+		end := i + chunkSize
+		if end > len(championshipList) {
+			end = len(championshipList)
+		}
+
+		opts := make([]discordgo.SelectMenuOption, 0, end-i)
+		for _, name := range championshipList[i:end] {
+			_, isSelected := selectedSet[name] // true if currently selected
+			opts = append(opts, discordgo.SelectMenuOption{
+				Label:   name,
+				Value:   name,
+				Default: isSelected,
+			})
+		}
+
+		menus = append(menus,
+			discordgo.ActionsRow{
+				Components: []discordgo.MessageComponent{
+					discordgo.SelectMenu{
+						CustomID:    fmt.Sprintf("champ_%d", i/chunkSize),
+						Placeholder: "Valitse sarjoja…",
+						MinValues:   &min,
+						MaxValues:   len(opts),
+						Options:     opts,
+					},
+				},
+			})
+	}
+
+	return menus
 }
 
 func handleUnsubscribeCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -253,41 +426,6 @@ func handleUnsubscribeCommand(s *discordgo.Session, i *discordgo.InteractionCrea
 		})
 	} else {
 		content := "✔ Poistetut tilaukset: " + strings.Join(deletedLeagues, ", ")
-
-		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &content,
-		})
-	}
-}
-
-func handleSubscriptions(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: "⚒ Käsitellään pyyntöä...",
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	})
-
-	subs, err := db.GetSubscriptionsByGuildChannel(i.GuildID, i.ChannelID)
-	if err != nil {
-		content := "❌ Pyyntö epäonnistui"
-
-		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &content,
-		})
-	} else if len(*subs) == 0 {
-		content := "❔ Tilauksia ei löytynyt"
-
-		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &content,
-		})
-	} else {
-		leagues := make([]string, len(*subs))
-		for i, s := range *subs {
-			leagues[i] = s.League
-		}
-		content := "✔ Tämän kanavan tilaukset: " + strings.Join(leagues, ", ")
 
 		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: &content,

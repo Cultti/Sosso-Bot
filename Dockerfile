@@ -1,5 +1,5 @@
-# Use official Go image
-FROM golang:1.25-alpine
+# Stage 1: Build the Go binary
+FROM golang:1.25-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -13,8 +13,17 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the Go binary
-RUN go build -o bot .
+# Build the Go binary with optimizations
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bot .
+
+# Stage 2: Create minimal runtime image
+FROM alpine:3.20
+
+# Set working directory
+WORKDIR /app
+
+# Copy the binary from the builder stage
+COPY --from=builder /app/bot .
 
 # Declare data volume for persistence
 VOLUME /app/data
