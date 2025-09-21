@@ -659,7 +659,11 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 		Title:       title,
 		Description: description,
 		Color:       0x2ecc71,
-		URL:         m.FaceitURL(),
+		Footer: &discordgo.MessageEmbedFooter{
+			Text:    "Powered by ArmaFinland",
+			IconURL: "https://armafinland.fi/logot/images/armafin-logo-200px.png",
+		},
+		URL: m.FaceitURL(),
 		Fields: []*discordgo.MessageEmbedField{
 			{
 				Name:  "Maps & Scores",
