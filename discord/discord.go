@@ -505,33 +505,42 @@ func createHarkkaPoll(s *discordgo.Session, channelID, kuvaus string) {
 	}
 }
 
-func SendMessageInfo(s *discordgo.Session, matchId string, league string) {
-	// Fetch match info
-	match, err := faceit.FetchMatchInfo(matchId)
-	if err != nil {
-		fmt.Println("Error fetching match info:", err)
-		return
-	}
+func SendMessageInfo(s *discordgo.Session, matchId, league string) {
+	const maxTries = 5
+	const retryDelay = time.Minute
 
-	// Build the embed once
-	embed := buildMatchEmbed(match, league)
+	var match *faceit.MatchData
+	var err error
 
-	// Fetch all subscriptions for this league
-	subs, err := db.GetSubscriptionsByLeague(league)
-	if err != nil {
-		fmt.Println("Error fetching subscriptions:", err)
-		return
-	}
-
-	if subs == nil || len(*subs) == 0 {
-		fmt.Println("No subscriptions found for league:", league)
-		return
-	}
-
-	// Send embed to each channel in the subscriptions
-	for _, sub := range *subs {
-		_, err := s.ChannelMessageSendEmbed(sub.ChannelID, embed)
+	for attempt := 1; attempt <= maxTries; attempt++ {
+		match, err = faceit.FetchMatchInfo(matchId)
 		if err != nil {
+			fmt.Printf("Error fetching match info (attempt %d/%d): %v\n", attempt, maxTries, err)
+			return
+		}
+		if len(match.Rounds) == 4 {
+			break
+		}
+		if attempt < maxTries {
+			time.Sleep(retryDelay)
+		} else {
+			fmt.Printf("Error: match %s still missing rounds after %d attempts\n", matchId, maxTries)
+			return
+		}
+	}
+
+	if match == nil || len(match.Rounds) != 4 {
+		fmt.Printf("Match %s data incomplete, skipping send\n", matchId)
+		return
+	}
+
+	embed := buildMatchEmbed(match, league)
+	subs, err := db.GetSubscriptionsByLeague(league)
+	if err != nil || subs == nil || len(*subs) == 0 {
+		return
+	}
+	for _, sub := range *subs {
+		if _, err := s.ChannelMessageSendEmbed(sub.ChannelID, embed); err != nil {
 			fmt.Printf("Error sending embed to channel %s: %v\n", sub.ChannelID, err)
 		}
 	}
