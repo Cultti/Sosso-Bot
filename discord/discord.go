@@ -542,7 +542,7 @@ func SendMessageInfo(s *discordgo.Session, matchId, league string) {
 			fmt.Printf("Error fetching match info (attempt %d/%d): %v\n", attempt, maxTries, err)
 			return
 		}
-		if len(match.Rounds) == 4 {
+		if len(match.Rounds) == 2 {
 			break
 		}
 		if attempt < maxTries {
@@ -553,7 +553,7 @@ func SendMessageInfo(s *discordgo.Session, matchId, league string) {
 		}
 	}
 
-	if match == nil || len(match.Rounds) != 4 {
+	if match == nil || len(match.Rounds) != 2 {
 		fmt.Printf("Match %s data incomplete, skipping send\n", matchId)
 		return
 	}
