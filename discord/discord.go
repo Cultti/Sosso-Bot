@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"sosso/db"
 	"sosso/faceit"
 	"strconv"
@@ -646,9 +647,17 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 
 	title := fmt.Sprintf("%s %s vs %s %s", emoji1, team1, team2, emoji2)
 
+	var description string
+	url, err := LeagueToURL(league)
+	if err != nil {
+		description = league
+	} else {
+		description = fmt.Sprintf("%s\n[Unofficial stats](%s)", league, url)
+	}
+
 	return &discordgo.MessageEmbed{
 		Title:       title,
-		Description: league,
+		Description: description,
 		Color:       0x2ecc71,
 		URL:         m.FaceitURL(),
 		Fields: []*discordgo.MessageEmbedField{
@@ -678,4 +687,34 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 			},
 		},
 	}
+}
+
+// LeagueToURL converts league name like
+//
+//	"20 Divisioona S11" or "Mestaruussarja S11 Playoffs"
+//
+// into its stats page URL.
+func LeagueToURL(name string) (string, error) {
+	base := "https://tuntematonjr.github.io/Pappaliiga-statsit"
+
+	// Normalize string
+	s := strings.TrimSpace(strings.ToLower(name))
+
+	// Regex to capture: [division] [divisioona] S[season] (Playoffs)?
+	re := regexp.MustCompile(`(?i)^(mestaruussarja|(\d+)\s+divisioona)\s+s(\d+)(?:\s+playoffs)?$`)
+	matches := re.FindStringSubmatch(s)
+	if matches == nil {
+		return "", fmt.Errorf("unrecognized league name: %q", name)
+	}
+
+	var division string
+	if strings.HasPrefix(matches[1], "mestaruussarja") {
+		division = "0"
+	} else {
+		division = matches[2]
+	}
+	season := matches[3]
+
+	url := fmt.Sprintf("%s/div%s-s%s.html", base, division, season)
+	return url, nil
 }
