@@ -54,17 +54,7 @@ func Start(championships *[]faceit.ChampionshipItem) (*discordgo.Session, error)
 		return nil, err
 	}
 
-	// register commands
-	registerAllCommands(sess)
-
 	return sess, nil
-}
-
-func registerAllCommands(s *discordgo.Session) {
-	for _, g := range s.State.Guilds {
-		fmt.Println("Registering commands for guild:", g.ID)
-		registerCommands(s, g.ID)
-	}
 }
 
 func registerCommands(s *discordgo.Session, guildID string) {
