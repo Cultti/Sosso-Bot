@@ -20,7 +20,6 @@ var allowed = map[string]bool{
 
 type Bot struct {
 	Session *discordgo.Session
-	GuildID string
 }
 
 var MatchChannel string
@@ -32,10 +31,9 @@ func Start(championships *[]faceit.ChampionshipItem) (*discordgo.Session, error)
 	}
 
 	token := os.Getenv("DISCORD_BOT_TOKEN")
-	guildID := os.Getenv("DISCORD_GUILD_ID")
 	MatchChannel = os.Getenv("DISCORD_MATCH_CHANNEL")
 
-	if token == "" || guildID == "" {
+	if token == "" {
 		return nil, fmt.Errorf("DISCORD_BOT_TOKEN and DISCORD_GUILD_ID must be set")
 	}
 
@@ -46,15 +44,26 @@ func Start(championships *[]faceit.ChampionshipItem) (*discordgo.Session, error)
 
 	sess.AddHandler(interactionCreate)
 	sess.AddHandler(interactionHandle)
+	sess.AddHandler(func(s *discordgo.Session, g *discordgo.GuildCreate) {
+		fmt.Println("Bot joined guild:", g.ID)
+		registerCommands(s, g.ID)
+	})
 
 	if err := sess.Open(); err != nil {
 		return nil, err
 	}
 
 	// register commands
-	registerCommands(sess, guildID)
+	registerAllCommands(sess)
 
 	return sess, nil
+}
+
+func registerAllCommands(s *discordgo.Session) {
+	for _, g := range s.State.Guilds {
+		fmt.Println("Registering commands for guild:", g.ID)
+		registerCommands(s, g.ID)
+	}
 }
 
 func registerCommands(s *discordgo.Session, guildID string) {
@@ -194,7 +203,7 @@ func interactionHandle(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseUpdateMessage,
 			Data: &discordgo.InteractionResponseData{
-				Content:    fmt.Sprintf("✔ Tilattu %d mestaruutta!", len(selectedSlice)),
+				Content:    fmt.Sprintf("✔ Tilattu %d sarjaa!", len(selectedSlice)),
 				Components: []discordgo.MessageComponent{},
 			},
 		})
@@ -506,7 +515,7 @@ func createHarkkaPoll(s *discordgo.Session, channelID, kuvaus string) {
 }
 
 func SendMessageInfo(s *discordgo.Session, matchId, league string) {
-	const maxTries = 5
+	const maxTries = 10
 	const retryDelay = time.Minute
 
 	var match *faceit.MatchData
