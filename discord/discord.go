@@ -54,6 +54,8 @@ func Start(championships *[]faceit.ChampionshipItem) (*discordgo.Session, error)
 		return nil, err
 	}
 
+	sess.ApplicationCommandDelete(sess.State.User.ID, "", "")
+
 	// register commands
 	registerAllCommands(sess)
 
@@ -68,6 +70,18 @@ func registerAllCommands(s *discordgo.Session) {
 }
 
 func registerCommands(s *discordgo.Session, guildID string) {
+	currentCommands, err := s.ApplicationCommands(s.State.User.ID, guildID)
+	if err == nil {
+		for _, v := range currentCommands {
+			err := s.ApplicationCommandDelete(s.State.User.ID, guildID, v.ID)
+			if err != nil {
+				log.Printf("failed to delete application command %q (guild %s): %v", v.ID, guildID, err)
+			} else {
+				log.Printf("successfully deleted application command %q from guild %s", v.ID, guildID)
+			}
+		}
+	}
+
 	cmds := []*discordgo.ApplicationCommand{
 		{
 			Name:        "pelipaiva",
