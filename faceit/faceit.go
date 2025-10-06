@@ -8,7 +8,7 @@ import (
 )
 
 func (m *MatchData) FaceitURL() string {
-	return fmt.Sprintf("https://www.faceit.com/en/cs2/room/%s", m.MatchID)
+	return fmt.Sprintf("https://www.faceit.com/cs2/room/%s", m.MatchID)
 }
 
 // FetchMatchInfo calls FaceIT API and decodes the response

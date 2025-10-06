@@ -83,8 +83,8 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 	seen2 := make(map[string]bool)
 	var players1, players2 []string
 
-	// Build map lines and gather players
-	var mapLines []string
+	// Collect map fields and gather stats
+	var mapFields []*discordgo.MessageEmbedField
 	for _, r := range m.Rounds {
 		if len(r.Teams) < 2 {
 			continue
@@ -109,8 +109,29 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 		roundsAgainst[t1.TeamStats.Team] += s2
 		roundsAgainst[t2.TeamStats.Team] += s1
 
-		// Map line
-		mapLines = append(mapLines, fmt.Sprintf("`%s`  %d:%d", r.RoundStats.Map, s1, s2))
+		// Create one field per map: map name as field name, score + winner as value
+		var winnerTeamName string
+		if r.RoundStats.Winner != "" {
+			// Find the team name by matching team ID with winner ID
+			if r.RoundStats.Winner == t1.TeamID {
+				winnerTeamName = t1.TeamStats.Team
+			} else if r.RoundStats.Winner == t2.TeamID {
+				winnerTeamName = t2.TeamStats.Team
+			} else {
+				winnerTeamName = "Unknown"
+			}
+		} else {
+			winnerTeamName = "Tie"
+		}
+
+		mapFieldName := fmt.Sprintf("%s %s:%s", r.RoundStats.Map, t1.TeamStats.FinalScore, t2.TeamStats.FinalScore)
+		mapFieldValue := fmt.Sprintf("🏆 %s", winnerTeamName)
+
+		mapFields = append(mapFields, &discordgo.MessageEmbedField{
+			Name:   mapFieldName,
+			Value:  mapFieldValue,
+			Inline: true,
+		})
 
 		// Players (avoid duplicates)
 		for _, p := range t1.Players {
@@ -127,30 +148,60 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 		}
 	}
 
-	// Decide emojis
-	var emoji1, emoji2 string
-	switch {
-	case wins[team1] > wins[team2]:
-		emoji1, emoji2 = "🏆", "💔"
-	case wins[team1] < wins[team2]:
-		emoji1, emoji2 = "💔", "🏆"
-	default:
-		emoji1, emoji2 = "🤝", "🤝"
+	// Create prominent match result display
+	var resultLine string
+	if wins[team1] > wins[team2] {
+		resultLine = fmt.Sprintf("🏆 **%s** %d - %d **%s** 💔", team1, wins[team1], wins[team2], team2)
+	} else if wins[team1] < wins[team2] {
+		resultLine = fmt.Sprintf("💔 **%s** %d - %d **%s** 🏆", team1, wins[team1], wins[team2], team2)
+	} else {
+		resultLine = fmt.Sprintf("🤝 **%s** %d - %d **%s** 🤝", team1, wins[team1], wins[team2], team2)
 	}
 
 	// Round diff
 	diff1 := roundsFor[team1] - roundsAgainst[team1]
 	diff2 := roundsFor[team2] - roundsAgainst[team2]
 
-	title := fmt.Sprintf("%s %s vs %s %s", emoji1, team1, team2, emoji2)
+	title := fmt.Sprintf("%s vs %s", team1, team2)
 
 	var description string
 	url, err := LeagueToURL(league)
 	if err != nil {
-		description = league
+		description = fmt.Sprintf("## %s\n\n%s", resultLine, league)
 	} else {
-		description = fmt.Sprintf("%s\n[Unofficial stats](%s)", league, url)
+		description = fmt.Sprintf("## %s\n\n%s\n[Unofficial stats](%s)", resultLine, league, url)
 	}
+
+	// Build all fields: maps first, then empty field, then teams
+	allFields := mapFields
+
+	// Add empty field to force teams to next row
+	allFields = append(allFields, &discordgo.MessageEmbedField{
+		Name:   "\u200b", // Zero-width space for invisible field name
+		Value:  "\u200b", // Zero-width space for invisible field value
+		Inline: false,    // Non-inline to force line break
+	})
+
+	allFields = append(allFields, &discordgo.MessageEmbedField{
+		Name: team1,
+		Value: fmt.Sprintf(
+			"Rounds: **%d** (Diff: **%+d**)\n%s",
+			roundsFor[team1],
+			diff1,
+			strings.Join(players1, "\n"),
+		),
+		Inline: true,
+	})
+	allFields = append(allFields, &discordgo.MessageEmbedField{
+		Name: team2,
+		Value: fmt.Sprintf(
+			"Rounds: **%d** (Diff: **%+d**)\n%s",
+			roundsFor[team2],
+			diff2,
+			strings.Join(players2, "\n"),
+		),
+		Inline: true,
+	})
 
 	return &discordgo.MessageEmbed{
 		Title:       title,
@@ -160,33 +211,8 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 			Text:    "Powered by ArmaFinland.fi",
 			IconURL: "https://armafinland.fi/logot/images/armafin-logo-200px.png",
 		},
-		URL: m.FaceitURL(),
-		Fields: []*discordgo.MessageEmbedField{
-			{
-				Name:  "Maps & Scores",
-				Value: strings.Join(mapLines, "\n"),
-			},
-			{
-				Name: team1,
-				Value: fmt.Sprintf(
-					"Rounds: **%d**\nDiff: **%+d**\n\n%s",
-					roundsFor[team1],
-					diff1,
-					strings.Join(players1, "\n"),
-				),
-				Inline: true,
-			},
-			{
-				Name: team2,
-				Value: fmt.Sprintf(
-					"Rounds: **%d**\nDiff: **%+d**\n\n%s",
-					roundsFor[team2],
-					diff2,
-					strings.Join(players2, "\n"),
-				),
-				Inline: true,
-			},
-		},
+		URL:    m.FaceitURL(),
+		Fields: allFields,
 	}
 }
 
