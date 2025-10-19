@@ -45,7 +45,9 @@ func DeleteSubscription(id uuid.UUID) error {
 
 func GetSubscriptionsByLeague(league string) (*[]Subscription, error) {
 	var subs []Subscription
-	err := database.Where("league = ?", league).Find(&subs).Error
+	// Match subscriptions where the stored league is a prefix of the incoming league
+	// For example: stored="5 Divisioona 11", incoming="5 Divisioona 11 - Playoffs" should match
+	err := database.Where("? GLOB league || '*'", league).Find(&subs).Error
 	return &subs, err
 }
 
