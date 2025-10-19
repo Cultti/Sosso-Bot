@@ -1,6 +1,7 @@
 package db
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,9 +46,15 @@ func DeleteSubscription(id uuid.UUID) error {
 
 func GetSubscriptionsByLeague(league string) (*[]Subscription, error) {
 	var subs []Subscription
-	// Match subscriptions where the stored league is a prefix of the incoming league
-	// For example: stored="5 Divisioona 11", incoming="5 Divisioona 11 - Playoffs" should match
-	err := database.Where("? GLOB league || '*'", league).Find(&subs).Error
+
+	// Handle cases where the incoming league contains "Playoffs "
+	// We want to match subscriptions that could be stored as either:
+	// - "20 Divisioona S11" (normalized, without "Playoffs ")
+	// - "20 Divisioona Playoffs S11" (exact match)
+	normalizedLeague := strings.Replace(league, "Playoffs ", "", 1)
+
+	// Search for subscriptions that match either the exact league name or the normalized version
+	err := database.Where("league = ? OR league = ?", league, normalizedLeague).Find(&subs).Error
 	return &subs, err
 }
 
