@@ -192,6 +192,26 @@
             font-weight: bold;
             margin-right: 10px;
         }
+
+        .invite-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #00d4ff 0%, #00ff88 100%);
+            color: #1a1a2e;
+            padding: 15px 40px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border-radius: 50px;
+            text-decoration: none;
+            margin-top: 20px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: 0 4px 16px rgba(0, 212, 255, 0.4);
+        }
+
+        .invite-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0, 255, 136, 0.6);
+            color: #1a1a2e;
+        }
     </style>
 </head>
 <body>
@@ -199,6 +219,9 @@
         <header>
             <h1>🤖 Sosso-Bot</h1>
             <p class="tagline">Discord-botti Pappaliigan otteluille ja joukkueen hallintaan</p>
+            <a href="https://discord.com/oauth2/authorize?client_id=1414332827310489732" target="_blank" class="invite-button">
+                Lisää Sössö palvelimelle
+            </a>
         </header>
 
         <div class="section">
