@@ -28,27 +28,34 @@ func registerCommands(s *discordgo.Session, guildID string) {
 				Required:    true,
 			}},
 		},
+		{
+			Name:        "subscriptions",
+			Description: "Manage subscriptions for this channel",
+		},
 	}
 
-	for _, c := range cmds {
-		if _, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, c); err != nil {
-			fmt.Println("Command create error:", err)
+	// Bulk overwrite is the easiest way to remove deprecated commands:
+	// it replaces the entire command set for the scope (guild or global).
+	if _, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, guildID, cmds); err != nil {
+		fmt.Println("Command bulk overwrite error:", err)
+	} else {
+		if guildID == "" {
+			fmt.Printf("Registered %d global commands\n", len(cmds))
+		} else {
+			fmt.Printf("Registered %d commands for guild %s\n", len(cmds), guildID)
 		}
 	}
+}
 
-	s.ApplicationCommandCreate(s.State.User.ID, guildID, &discordgo.ApplicationCommand{
-		Name:        "unsubscribe",
-		Description: "Unsubscribe to Pappaliiga matches",
-		Options: []*discordgo.ApplicationCommandOption{{
-			Type:        discordgo.ApplicationCommandOptionString,
-			Name:        "liiga",
-			Description: "Liiga muodossa '20 Divisioona S11'",
-			Required:    false,
-		}},
-	})
+func clearGuildCommands(s *discordgo.Session, guildID string) {
+	if guildID == "" {
+		return
+	}
 
-	s.ApplicationCommandCreate(s.State.User.ID, guildID, &discordgo.ApplicationCommand{
-		Name:        "subscriptions",
-		Description: "Manage subscriptions for this channel",
-	})
+	// Overwrite with an empty list to delete all guild-scoped commands.
+	if _, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, guildID, []*discordgo.ApplicationCommand{}); err != nil {
+		fmt.Println("Guild command clear error:", err)
+	} else {
+		fmt.Printf("Cleared guild commands for guild %s\n", guildID)
+	}
 }

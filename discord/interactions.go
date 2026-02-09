@@ -150,11 +150,6 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if i.ApplicationCommandData().Name == "unsubscribe" {
-		handleUnsubscribeCommand(s, i)
-		return
-	}
-
 	switch i.ApplicationCommandData().Name {
 	case "pelipaiva":
 		vihollinen := i.ApplicationCommandData().Options[0].StringValue()
@@ -297,44 +292,4 @@ func buildSelectMenus(championshipList []string, currentSelections []string) []d
 	}
 
 	return menus
-}
-
-func handleUnsubscribeCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: "⚒ Käsitellään pyyntöä...",
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	})
-
-	guildId := i.GuildID
-	channelId := i.ChannelID
-
-	var league string
-	if len(i.ApplicationCommandData().Options) == 1 {
-		league = i.ApplicationCommandData().Options[0].StringValue()
-	}
-
-	deletedLeagues, err := db.DeleteSubscriptionsByGuildChannel(guildId, channelId, league)
-	if err != nil {
-		content := "❌ Tilauksen peruminen epäonnistui"
-
-		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &content,
-		})
-		return
-	} else if len(deletedLeagues) == 0 {
-		content := "❔ Tilauksia ei löytynyt"
-
-		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &content,
-		})
-	} else {
-		content := "✔ Poistetut tilaukset: " + strings.Join(deletedLeagues, ", ")
-
-		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &content,
-		})
-	}
 }
