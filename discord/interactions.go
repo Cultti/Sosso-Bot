@@ -125,13 +125,14 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if err != nil {
 			// Fallback to fetching permissions via API
 			perms, err = s.UserChannelPermissions(userID, i.ChannelID)
+			if err != nil {
+				log.Println("Failed to fetch user permissions:", err)
+			}
 		}
 
 		// Only allow if we successfully got permissions and user has Administrator
 		if err == nil && perms&discordgo.PermissionAdministrator != 0 {
 			isAllowed = true
-		} else if err != nil {
-			log.Println("Failed to fetch user permissions:", err)
 		}
 	}
 
