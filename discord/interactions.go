@@ -131,6 +131,7 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 
 		// Only allow if we successfully got permissions and user has Administrator
+		// err will be nil if either State or API call succeeded
 		if err == nil && perms&discordgo.PermissionAdministrator != 0 {
 			isAllowed = true
 		}
