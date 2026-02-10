@@ -120,16 +120,17 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	isAllowed := allowed[userID]
 
 	if i.GuildID != "" && !isAllowed {
-		// Fetch guild info to check owner
-		guild, err := s.State.Guild(i.GuildID)
+		// Check if user has administrator permissions
+		perms, err := s.State.UserChannelPermissions(userID, i.ChannelID)
 		if err != nil {
-			guild, err = s.Guild(i.GuildID) // fallback to API call if not in state
+			// Fallback to fetching permissions via API
+			perms, err = s.UserChannelPermissions(userID, i.ChannelID)
 			if err != nil {
-				log.Println("Failed to fetch guild info:", err)
+				log.Println("Failed to fetch user permissions:", err)
 			}
 		}
 
-		if guild != nil && guild.OwnerID == userID {
+		if perms&discordgo.PermissionAdministrator != 0 {
 			isAllowed = true
 		}
 	}
