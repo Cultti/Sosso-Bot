@@ -2,7 +2,6 @@ package discord
 
 import (
 	"fmt"
-	"regexp"
 	"sosso/db"
 	"sosso/faceit"
 	"strconv"
@@ -62,6 +61,8 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 		}
 	}
 
+	competitionID := matchCompetitionID(m)
+
 	// Use first round just for team names (IDs should be stable)
 	if len(m.Rounds[0].Teams) < 2 {
 		return &discordgo.MessageEmbed{
@@ -72,6 +73,10 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 	}
 	team1 := m.Rounds[0].Teams[0].TeamStats.Team
 	team2 := m.Rounds[0].Teams[1].TeamStats.Team
+	teamIDs := map[string]string{
+		team1: m.Rounds[0].Teams[0].TeamID,
+		team2: m.Rounds[0].Teams[1].TeamID,
+	}
 
 	// Stats containers
 	wins := map[string]int{team1: 0, team2: 0}
@@ -135,27 +140,60 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 
 		// Players (avoid duplicates)
 		for _, p := range t1.Players {
-			if !seen1[p.Nickname] {
-				seen1[p.Nickname] = true
-				players1 = append(players1, fmt.Sprintf("- %s", p.Nickname))
+			key := p.PlayerID
+			if key == "" {
+				key = p.Nickname
+			}
+			if seen1[key] {
+				continue
+			}
+			seen1[key] = true
+
+			displayName := escapeDiscordLinkText(p.Nickname)
+			if competitionID != "" && p.PlayerID != "" {
+				players1 = append(players1, fmt.Sprintf("- [%s](%s)", displayName, playerURL(p.PlayerID, competitionID)))
+			} else {
+				players1 = append(players1, fmt.Sprintf("- %s", displayName))
 			}
 		}
 		for _, p := range t2.Players {
-			if !seen2[p.Nickname] {
-				seen2[p.Nickname] = true
-				players2 = append(players2, fmt.Sprintf("- %s", p.Nickname))
+			key := p.PlayerID
+			if key == "" {
+				key = p.Nickname
+			}
+			if seen2[key] {
+				continue
+			}
+			seen2[key] = true
+
+			displayName := escapeDiscordLinkText(p.Nickname)
+			if competitionID != "" && p.PlayerID != "" {
+				players2 = append(players2, fmt.Sprintf("- [%s](%s)", displayName, playerURL(p.PlayerID, competitionID)))
+			} else {
+				players2 = append(players2, fmt.Sprintf("- %s", displayName))
 			}
 		}
 	}
 
 	// Create prominent match result display
+	team1Display := escapeDiscordLinkText(team1)
+	team2Display := escapeDiscordLinkText(team2)
+	if competitionID != "" {
+		if id := teamIDs[team1]; id != "" {
+			team1Display = fmt.Sprintf("[%s](%s)", team1Display, teamURL(id, competitionID))
+		}
+		if id := teamIDs[team2]; id != "" {
+			team2Display = fmt.Sprintf("[%s](%s)", team2Display, teamURL(id, competitionID))
+		}
+	}
+
 	var resultLine string
 	if wins[team1] > wins[team2] {
-		resultLine = fmt.Sprintf("🏆 **%s** %d - %d **%s** 💔", team1, wins[team1], wins[team2], team2)
+		resultLine = fmt.Sprintf("🏆 **%s** %d - %d **%s** 💔", team1Display, wins[team1], wins[team2], team2Display)
 	} else if wins[team1] < wins[team2] {
-		resultLine = fmt.Sprintf("💔 **%s** %d - %d **%s** 🏆", team1, wins[team1], wins[team2], team2)
+		resultLine = fmt.Sprintf("💔 **%s** %d - %d **%s** 🏆", team1Display, wins[team1], wins[team2], team2Display)
 	} else {
-		resultLine = fmt.Sprintf("🤝 **%s** %d - %d **%s** 🤝", team1, wins[team1], wins[team2], team2)
+		resultLine = fmt.Sprintf("🤝 **%s** %d - %d **%s** 🤝", team1Display, wins[team1], wins[team2], team2Display)
 	}
 
 	// Round diff
@@ -165,11 +203,11 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 	title := fmt.Sprintf("%s vs %s", team1, team2)
 
 	var description string
-	url, err := LeagueToURL(league)
+	url, err := LeagueToURL(competitionID)
 	if err != nil {
 		description = fmt.Sprintf("## %s\n\n%s", resultLine, league)
 	} else {
-		description = fmt.Sprintf("## %s\n\n%s\n[Unofficial stats](%s)", resultLine, league, url)
+		description = fmt.Sprintf("## %s\n\n[%s](%s)", resultLine, league, url)
 	}
 
 	// Build all fields: maps first, then empty field, then teams
@@ -183,7 +221,7 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 	})
 
 	allFields = append(allFields, &discordgo.MessageEmbedField{
-		Name: team1,
+		Name: escapeDiscordLinkText(team1),
 		Value: fmt.Sprintf(
 			"Rounds: **%d** (Diff: **%+d**)\n%s",
 			roundsFor[team1],
@@ -193,7 +231,7 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 		Inline: true,
 	})
 	allFields = append(allFields, &discordgo.MessageEmbedField{
-		Name: team2,
+		Name: escapeDiscordLinkText(team2),
 		Value: fmt.Sprintf(
 			"Rounds: **%d** (Diff: **%+d**)\n%s",
 			roundsFor[team2],
@@ -216,32 +254,39 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 	}
 }
 
-// LeagueToURL converts league name like
-//
-//	"20 Divisioona S11" or "Mestaruussarja S11 Playoffs"
-//
-// into its stats page URL.
-func LeagueToURL(name string) (string, error) {
-	base := "https://tuntematonjr.github.io/Pappaliiga-statsit"
-
-	// Normalize string
-	s := strings.TrimSpace(strings.ToLower(name))
-
-	// Regex to capture: [division] [divisioona] S[season] (Playoffs)?
-	re := regexp.MustCompile(`(?i)^(mestaruussarja|(\d+)\s+divisioona)\s+s(\d+)(?:\s+playoffs)?$`)
-	matches := re.FindStringSubmatch(s)
-	if matches == nil {
-		return "", fmt.Errorf("unrecognized league name: %q", name)
+// LeagueToURL returns the league (division) stats page URL by competition ID.
+func LeagueToURL(competitionID string) (string, error) {
+	if strings.TrimSpace(competitionID) == "" {
+		return "", fmt.Errorf("missing competition ID")
 	}
+	return fmt.Sprintf("https://pappa.aukko.net/division/%s", competitionID), nil
+}
 
-	var division string
-	if strings.HasPrefix(matches[1], "mestaruussarja") {
-		division = "0"
-	} else {
-		division = matches[2]
+func teamURL(teamID, competitionID string) string {
+	return fmt.Sprintf("https://pappa.aukko.net/team/%s/%s", competitionID, teamID)
+}
+
+func playerURL(playerID, competitionID string) string {
+	return fmt.Sprintf("https://pappa.aukko.net/player/%s/%s", competitionID, playerID)
+}
+
+func matchCompetitionID(m *faceit.MatchData) string {
+	for _, r := range m.Rounds {
+		if r.CompetitionID != nil && strings.TrimSpace(*r.CompetitionID) != "" {
+			return strings.TrimSpace(*r.CompetitionID)
+		}
 	}
-	season := matches[3]
+	return ""
+}
 
-	url := fmt.Sprintf("%s/div%s-s%s.html", base, division, season)
-	return url, nil
+func escapeDiscordLinkText(s string) string {
+	// Escape characters that can break markdown links in Discord.
+	r := strings.NewReplacer(
+		"\\", "\\\\",
+		"[", "\\[",
+		"]", "\\]",
+		"(", "\\(",
+		")", "\\)",
+	)
+	return r.Replace(s)
 }
