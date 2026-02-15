@@ -3,11 +3,55 @@ package discord
 import (
 	"fmt"
 	"log"
+	"sort"
 	"sosso/db"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
 )
+
+const discordMessageMaxLen = 2000
+
+func formatSubscribedDivisions(leagues []string) string {
+	if len(leagues) == 0 {
+		return "(ei yhtään)"
+	}
+
+	// Leave headroom for any surrounding text.
+	const maxLen = discordMessageMaxLen - 200
+
+	lines := make([]string, 0, len(leagues))
+	for _, league := range leagues {
+		lines = append(lines, "• "+league)
+	}
+
+	out := strings.Join(lines, "\n")
+	if len(out) <= maxLen {
+		return out
+	}
+
+	// Truncate to fit the message limit; keep whole lines.
+	truncated := make([]string, 0, len(lines))
+	currentLen := 0
+	for _, line := range lines {
+		added := len(line)
+		if len(truncated) > 0 {
+			added += 1 // newline
+		}
+		if currentLen+added > maxLen {
+			break
+		}
+		truncated = append(truncated, line)
+		currentLen += added
+	}
+
+	remaining := len(lines) - len(truncated)
+	if remaining > 0 {
+		truncated = append(truncated, fmt.Sprintf("• …(+%d lisää)", remaining))
+	}
+
+	return strings.Join(truncated, "\n")
+}
 
 // userID_channelID -> menuID -> []selectedValues
 var tempSelections = map[string]map[string][]string{}
@@ -80,6 +124,8 @@ func interactionHandle(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		for v := range finalSelections {
 			selectedSlice = append(selectedSlice, v)
 		}
+		sort.Strings(selectedSlice)
+		selectedSlice = sortChampionships(selectedSlice)
 
 		// Clear all subscriptions for this channel
 		_, _ = db.DeleteSubscriptionsByGuildChannel(guildID, channelID, "")
@@ -93,14 +139,28 @@ func interactionHandle(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			})
 		}
 
+		divisionsList := formatSubscribedDivisions(selectedSlice)
+
+		// Send message to channel (non-ephemeral)
+		channelMsg := fmt.Sprintf("✅ Tilaukset tallennettu. Tähän kanavaan tilatut sarjat (%d):\n%s", len(selectedSlice), divisionsList)
+		_, channelSendErr := s.ChannelMessageSend(channelID, channelMsg)
+		if channelSendErr != nil {
+			log.Println("Failed to send subscriptions summary to channel:", channelSendErr)
+		}
+
 		// Clear temporary selections
 		delete(tempSelections, userKey)
+
+		ephemeralContent := fmt.Sprintf("✔ Tilattu %d sarjaa!", len(selectedSlice))
+		if channelSendErr != nil {
+			ephemeralContent = "⚠ En saanut lähetettyä viestiä kanavaan. Tarkista minun käyttöoikeuteni, jos haluat kanava-ilmoitukset."
+		}
 
 		// Update ephemeral message
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseUpdateMessage,
 			Data: &discordgo.InteractionResponseData{
-				Content:    fmt.Sprintf("✔ Tilattu %d sarjaa!", len(selectedSlice)),
+				Content:    ephemeralContent,
 				Components: []discordgo.MessageComponent{},
 			},
 		})

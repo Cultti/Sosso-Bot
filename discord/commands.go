@@ -46,16 +46,3 @@ func registerCommands(s *discordgo.Session, guildID string) {
 		}
 	}
 }
-
-func clearGuildCommands(s *discordgo.Session, guildID string) {
-	if guildID == "" {
-		return
-	}
-
-	// Overwrite with an empty list to delete all guild-scoped commands.
-	if _, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, guildID, []*discordgo.ApplicationCommand{}); err != nil {
-		fmt.Println("Guild command clear error:", err)
-	} else {
-		fmt.Printf("Cleared guild commands for guild %s\n", guildID)
-	}
-}

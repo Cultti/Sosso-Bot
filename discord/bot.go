@@ -45,8 +45,6 @@ func Start(championships *[]faceit.ChampionshipItem) (*discordgo.Session, error)
 	})
 	sess.AddHandler(func(s *discordgo.Session, g *discordgo.GuildCreate) {
 		fmt.Println("Bot seen guild:", g.ID)
-		// Ensure no guild-specific commands exist; use global commands only.
-		clearGuildCommands(s, g.ID)
 	})
 
 	if err := sess.Open(); err != nil {
