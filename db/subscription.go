@@ -102,3 +102,22 @@ func GetSubscriptionsByGuildChannel(guildID string, channelID string) (*[]Subscr
 
 	return &subs, nil
 }
+
+// DeleteSubscriptionsByGuildID deletes all subscriptions belonging to a guild.
+// Returns the number of deleted rows.
+func DeleteSubscriptionsByGuildID(guildID string) (int64, error) {
+	res := database.Where("guild_id = ?", guildID).Delete(&Subscription{})
+	return res.RowsAffected, res.Error
+}
+
+// DeleteSubscriptionsNotInGuildIDs deletes all subscriptions whose GuildID is not in the provided list.
+// Returns the number of deleted rows.
+// If guildIDs is empty, nothing is deleted (to avoid accidentally wiping all subscriptions).
+func DeleteSubscriptionsNotInGuildIDs(guildIDs []string) (int64, error) {
+	if len(guildIDs) == 0 {
+		return 0, nil
+	}
+
+	res := database.Where("guild_id NOT IN ?", guildIDs).Delete(&Subscription{})
+	return res.RowsAffected, res.Error
+}

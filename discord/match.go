@@ -2,14 +2,19 @@ package discord
 
 import (
 	"fmt"
+	"log"
 	"sosso/db"
 	"sosso/faceit"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
+
+var ownerNotifyMu sync.Mutex
+var ownerNotifyLastSent = map[string]time.Time{}
 
 func SendMessageInfo(s *discordgo.Session, matchId, league string) {
 	const maxTries = 10
@@ -48,7 +53,58 @@ func SendMessageInfo(s *discordgo.Session, matchId, league string) {
 	for _, sub := range *subs {
 		if _, err := s.ChannelMessageSendEmbed(sub.ChannelID, embed); err != nil {
 			fmt.Printf("Error sending embed to channel %s: %v\n", sub.ChannelID, err)
+			notifyGuildOwnerSendFailure(s, sub.GuildID, sub.ChannelID)
 		}
+	}
+}
+
+func notifyGuildOwnerSendFailure(s *discordgo.Session, guildID, channelID string) {
+	if s == nil || strings.TrimSpace(guildID) == "" || strings.TrimSpace(channelID) == "" {
+		return
+	}
+
+	// Resolve guild (prefer cache/state, fallback to API)
+	guild, err := s.State.Guild(guildID)
+	if err != nil || guild == nil {
+		guild, err = s.Guild(guildID)
+		if err != nil || guild == nil {
+			log.Printf("Failed to resolve guild %s for send-failure notification: %v", guildID, err)
+			return
+		}
+	}
+
+	ownerID := strings.TrimSpace(guild.OwnerID)
+	if ownerID == "" {
+		return
+	}
+
+	// Rate limit: max 1 message / hour per guild owner.
+	now := time.Now()
+	ownerNotifyMu.Lock()
+	if last, ok := ownerNotifyLastSent[ownerID]; ok {
+		if now.Sub(last) < time.Hour {
+			ownerNotifyMu.Unlock()
+			return
+		}
+	}
+	// Set immediately so concurrent failures won't double-send.
+	ownerNotifyLastSent[ownerID] = now
+	ownerNotifyMu.Unlock()
+
+	dm, err := s.UserChannelCreate(ownerID)
+	if err != nil || dm == nil {
+		log.Printf("Failed to create DM channel for guild owner %s (guild %s): %v", ownerID, guildID, err)
+		return
+	}
+
+	msg := fmt.Sprintf(
+		"⚠ En saanut lähetettyä tilausilmoitusta kanavaan <#%s> palvelimella **%s**. Tarkista minun käyttöoikeuteni kanavaan (View Channel / Send Messages / Embed Links).",
+		channelID,
+		escapeDiscordLinkText(guild.Name),
+	)
+
+	if _, err := s.ChannelMessageSend(dm.ID, msg); err != nil {
+		log.Printf("Failed to DM guild owner %s about channel send failure (guild %s, channel %s): %v", ownerID, guildID, channelID, err)
 	}
 }
 
