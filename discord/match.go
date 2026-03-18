@@ -29,18 +29,18 @@ func SendMessageInfo(s *discordgo.Session, matchId, league string) {
 			fmt.Printf("Error fetching match info (attempt %d/%d): %v\n", attempt, maxTries, err)
 			return
 		}
-		if len(match.Rounds) == 2 {
+		if isSeriesComplete(match) {
 			break
 		}
 		if attempt < maxTries {
 			time.Sleep(retryDelay)
 		} else {
-			fmt.Printf("Error: match %s still missing rounds after %d attempts\n", matchId, maxTries)
+			fmt.Printf("Error: match %s still missing complete series data after %d attempts\n", matchId, maxTries)
 			return
 		}
 	}
 
-	if match == nil || len(match.Rounds) != 2 {
+	if match == nil || !isSeriesComplete(match) {
 		fmt.Printf("Match %s data incomplete, skipping send\n", matchId)
 		return
 	}
@@ -56,6 +56,59 @@ func SendMessageInfo(s *discordgo.Session, matchId, league string) {
 			notifyGuildOwnerSendFailure(s, sub.GuildID, sub.ChannelID)
 		}
 	}
+}
+
+func isSeriesComplete(m *faceit.MatchData) bool {
+	if m == nil || len(m.Rounds) == 0 {
+		return false
+	}
+
+	bestOf := parseBestOf(m)
+	if bestOf <= 0 {
+		bestOf = 2
+	}
+
+	// BO2 always has two maps. BO3 can end at 2-0 or go to a third map.
+	if bestOf == 2 {
+		return len(m.Rounds) >= 2
+	}
+	if bestOf >= 3 {
+		requiredWins := bestOf/2 + 1
+		wins := map[string]int{}
+
+		for _, r := range m.Rounds {
+			if len(r.Teams) < 2 {
+				continue
+			}
+			for _, t := range r.Teams {
+				w, _ := strconv.Atoi(t.TeamStats.TeamWin)
+				if w > 0 {
+					wins[t.TeamID] += w
+				}
+			}
+		}
+
+		for _, w := range wins {
+			if w >= requiredWins {
+				return len(m.Rounds) >= 2
+			}
+		}
+		return len(m.Rounds) >= bestOf
+	}
+
+	return len(m.Rounds) >= 2
+}
+
+func parseBestOf(m *faceit.MatchData) int {
+	for _, r := range m.Rounds {
+		if strings.TrimSpace(r.BestOf) == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(strings.TrimSpace(r.BestOf)); err == nil {
+			return n
+		}
+	}
+	return 0
 }
 
 func notifyGuildOwnerSendFailure(s *discordgo.Session, guildID, channelID string) {
@@ -174,11 +227,12 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 		var winnerTeamName string
 		if r.RoundStats.Winner != "" {
 			// Find the team name by matching team ID with winner ID
-			if r.RoundStats.Winner == t1.TeamID {
+			switch r.RoundStats.Winner {
+			case t1.TeamID:
 				winnerTeamName = t1.TeamStats.Team
-			} else if r.RoundStats.Winner == t2.TeamID {
+			case t2.TeamID:
 				winnerTeamName = t2.TeamStats.Team
-			} else {
+			default:
 				winnerTeamName = "Unknown"
 			}
 		} else {
@@ -186,7 +240,7 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 		}
 
 		mapFieldName := fmt.Sprintf("%s %s:%s", r.RoundStats.Map, t1.TeamStats.FinalScore, t2.TeamStats.FinalScore)
-		mapFieldValue := fmt.Sprintf("🏆 %s", winnerTeamName)
+		mapFieldValue := fmt.Sprintf("🏆 %s", escapeDiscordLinkText(winnerTeamName))
 
 		mapFields = append(mapFields, &discordgo.MessageEmbedField{
 			Name:   mapFieldName,
@@ -256,7 +310,7 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 	diff1 := roundsFor[team1] - roundsAgainst[team1]
 	diff2 := roundsFor[team2] - roundsAgainst[team2]
 
-	title := fmt.Sprintf("%s vs %s", team1, team2)
+	title := fmt.Sprintf("%s vs %s", escapeDiscordLinkText(team1), escapeDiscordLinkText(team2))
 
 	var description string
 	url, err := LeagueToURL(competitionID)
@@ -336,9 +390,18 @@ func matchCompetitionID(m *faceit.MatchData) string {
 }
 
 func escapeDiscordLinkText(s string) string {
-	// Escape characters that can break markdown links in Discord.
+	// Escape characters that can break markdown formatting in Discord.
+	// This is used for player/team names so they can't accidentally trigger formatting.
 	r := strings.NewReplacer(
 		"\\", "\\\\",
+		"*", "\\*",
+		"_", "\\_",
+		"~", "\\~",
+		"`", "\\`",
+		"|", "\\|",
+		">", "\\>",
+		"#", "\\#",
+		"!", "\\!",
 		"[", "\\[",
 		"]", "\\]",
 		"(", "\\(",

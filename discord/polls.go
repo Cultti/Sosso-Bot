@@ -34,7 +34,7 @@ func createPelipaivaPoll(s *discordgo.Session, channelID, vihollinen string) {
 	})
 
 	_, week := nextMonday.ISOWeek()
-	description := fmt.Sprintf("Viikon %d pelipäivä. Vihollinen %s.", week, vihollinen)
+	description := fmt.Sprintf("Viikon %d pelipäivä. Vihollinen %s.", week, escapeDiscordLinkText(vihollinen))
 
 	_, err := s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 		Content:         "@everyone",
