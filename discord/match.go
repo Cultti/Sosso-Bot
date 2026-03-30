@@ -17,31 +17,42 @@ var ownerNotifyMu sync.Mutex
 var ownerNotifyLastSent = map[string]time.Time{}
 
 func SendMessageInfo(s *discordgo.Session, matchId, league string) {
-	const maxTries = 10
+	const maxTries = 240
 	const retryDelay = time.Minute
 
 	var match *faceit.MatchData
 	var err error
 
 	for attempt := 1; attempt <= maxTries; attempt++ {
+		retryReason := ""
+
 		match, err = faceit.FetchMatchInfo(matchId)
 		if err != nil {
-			fmt.Printf("Error fetching match info (attempt %d/%d): %v\n", attempt, maxTries, err)
-			return
+			retryReason = err.Error()
+		} else if match == nil {
+			retryReason = "got nil match"
+		} else if !isSeriesComplete(match) {
+			retryReason = "series data incomplete"
 		}
-		if isSeriesComplete(match) {
+
+		if retryReason == "" {
 			break
 		}
-		if attempt < maxTries {
-			time.Sleep(retryDelay)
-		} else {
-			fmt.Printf("Error: match %s still missing complete series data after %d attempts\n", matchId, maxTries)
+
+		log.Printf("Error fetching match info %s (attempt %d/%d): %s", matchId, attempt, maxTries, retryReason)
+		if attempt == maxTries {
+			if match == nil {
+				log.Printf("Error: failed to fetch match %s after %d attempts", matchId, maxTries)
+				return
+			}
+			log.Printf("Error: match %s still missing complete series data after %d attempts", matchId, maxTries)
 			return
 		}
+		time.Sleep(retryDelay)
 	}
 
 	if match == nil || !isSeriesComplete(match) {
-		fmt.Printf("Match %s data incomplete, skipping send\n", matchId)
+		log.Printf("Match %s data incomplete, skipping send", matchId)
 		return
 	}
 
@@ -52,7 +63,7 @@ func SendMessageInfo(s *discordgo.Session, matchId, league string) {
 	}
 	for _, sub := range *subs {
 		if _, err := s.ChannelMessageSendEmbed(sub.ChannelID, embed); err != nil {
-			fmt.Printf("Error sending embed to channel %s: %v\n", sub.ChannelID, err)
+			log.Printf("Error sending embed to channel %s: %v", sub.ChannelID, err)
 			notifyGuildOwnerSendFailure(s, sub.GuildID, sub.ChannelID)
 		}
 	}

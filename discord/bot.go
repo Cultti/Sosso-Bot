@@ -81,7 +81,7 @@ func Start(championships *[]faceit.ChampionshipItem) (*discordgo.Session, error)
 		})
 	})
 	sess.AddHandler(func(s *discordgo.Session, g *discordgo.GuildCreate) {
-		fmt.Println("Bot seen guild:", g.ID)
+		log.Printf("Bot seen guild: %s", g.ID)
 	})
 	sess.AddHandler(func(s *discordgo.Session, g *discordgo.GuildDelete) {
 		if g == nil || g.ID == "" {
