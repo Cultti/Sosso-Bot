@@ -51,7 +51,8 @@ func GetSubscriptionsByLeague(league string) (*[]Subscription, error) {
 	// We want to match subscriptions that could be stored as either:
 	// - "20 Divisioona S11" (normalized, without "Playoffs ")
 	// - "20 Divisioona Playoffs S11" (exact match)
-	normalizedLeague := strings.Replace(league, "Playoffs ", "", 1)
+	normalizedLeague := strings.Replace(league, "Playoffs", "", 1)
+	normalizedLeague = strings.TrimSpace(normalizedLeague)
 
 	// Search for subscriptions that match either the exact league name or the normalized version
 	err := database.Where("league = ? OR league = ?", league, normalizedLeague).Find(&subs).Error
