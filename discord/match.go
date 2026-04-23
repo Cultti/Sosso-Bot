@@ -164,7 +164,7 @@ func notifyGuildOwnerSendFailure(s *discordgo.Session, guildID, channelID string
 	msg := fmt.Sprintf(
 		"⚠ En saanut lähetettyä tilausilmoitusta kanavaan <#%s> palvelimella **%s**. Tarkista minun käyttöoikeuteni kanavaan (View Channel / Send Messages / Embed Links).",
 		channelID,
-		escapeDiscordLinkText(guild.Name),
+		guild.Name,
 	)
 
 	if _, err := s.ChannelMessageSend(dm.ID, msg); err != nil {
@@ -252,7 +252,7 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 
 		replayURL := fmt.Sprintf("https://replay2.pappa.aukko.net/player?faceit_match_id=%s&map_id=%d", m.MatchID, i+1)
 		mapFieldName := fmt.Sprintf("%s %s:%s", r.RoundStats.Map, t1.TeamStats.FinalScore, t2.TeamStats.FinalScore)
-		mapFieldValue := fmt.Sprintf("🏆 %s\n[2D Demo](%s)", escapeDiscordLinkText(winnerTeamName), replayURL)
+		mapFieldValue := fmt.Sprintf("🏆 %s\n[2D Demo](%s)", winnerTeamName, replayURL)
 
 		mapFields = append(mapFields, &discordgo.MessageEmbedField{
 			Name:   mapFieldName,
@@ -271,11 +271,10 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 			}
 			seen1[key] = true
 
-			displayName := escapeDiscordLinkText(p.Nickname)
 			if competitionID != "" && p.PlayerID != "" {
-				players1 = append(players1, fmt.Sprintf("- [%s](%s)", displayName, playerURL(p.PlayerID, competitionID)))
+				players1 = append(players1, fmt.Sprintf("- [%s](%s)", p.Nickname, playerURL(p.PlayerID, competitionID)))
 			} else {
-				players1 = append(players1, fmt.Sprintf("- %s", displayName))
+				players1 = append(players1, fmt.Sprintf("- %s", p.Nickname))
 			}
 		}
 		for _, p := range t2.Players {
@@ -288,24 +287,23 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 			}
 			seen2[key] = true
 
-			displayName := escapeDiscordLinkText(p.Nickname)
 			if competitionID != "" && p.PlayerID != "" {
-				players2 = append(players2, fmt.Sprintf("- [%s](%s)", displayName, playerURL(p.PlayerID, competitionID)))
+				players2 = append(players2, fmt.Sprintf("- [%s](%s)", p.Nickname, playerURL(p.PlayerID, competitionID)))
 			} else {
-				players2 = append(players2, fmt.Sprintf("- %s", displayName))
+				players2 = append(players2, fmt.Sprintf("- %s", p.Nickname))
 			}
 		}
 	}
 
 	// Create prominent match result display
-	team1Display := escapeDiscordLinkText(team1)
-	team2Display := escapeDiscordLinkText(team2)
+	team1Display := team1
+	team2Display := team2
 	if competitionID != "" {
 		if id := teamIDs[team1]; id != "" {
-			team1Display = fmt.Sprintf("[%s](%s)", team1Display, teamURL(id, competitionID))
+			team1Display = fmt.Sprintf("[%s](%s)", team1, teamURL(id, competitionID))
 		}
 		if id := teamIDs[team2]; id != "" {
-			team2Display = fmt.Sprintf("[%s](%s)", team2Display, teamURL(id, competitionID))
+			team2Display = fmt.Sprintf("[%s](%s)", team2, teamURL(id, competitionID))
 		}
 	}
 
@@ -322,7 +320,7 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 	diff1 := roundsFor[team1] - roundsAgainst[team1]
 	diff2 := roundsFor[team2] - roundsAgainst[team2]
 
-	title := fmt.Sprintf("%s vs %s", escapeDiscordLinkText(team1), escapeDiscordLinkText(team2))
+	title := fmt.Sprintf("%s vs %s", team1, team2)
 
 	var description string
 	url, err := LeagueToURL(competitionID)
@@ -343,7 +341,7 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 	})
 
 	allFields = append(allFields, &discordgo.MessageEmbedField{
-		Name: escapeDiscordLinkText(team1),
+		Name: team1,
 		Value: fmt.Sprintf(
 			"Rounds: **%d** (Diff: **%+d**)\n%s",
 			roundsFor[team1],
@@ -353,7 +351,7 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 		Inline: true,
 	})
 	allFields = append(allFields, &discordgo.MessageEmbedField{
-		Name: escapeDiscordLinkText(team2),
+		Name: team2,
 		Value: fmt.Sprintf(
 			"Rounds: **%d** (Diff: **%+d**)\n%s",
 			roundsFor[team2],
@@ -399,25 +397,4 @@ func matchCompetitionID(m *faceit.MatchData) string {
 		}
 	}
 	return ""
-}
-
-func escapeDiscordLinkText(s string) string {
-	// Escape characters that can break markdown formatting in Discord.
-	// This is used for player/team names so they can't accidentally trigger formatting.
-	r := strings.NewReplacer(
-		"\\", "\\\\",
-		"*", "\\*",
-		"_", "\\_",
-		"~", "\\~",
-		"`", "\\`",
-		"|", "\\|",
-		">", "\\>",
-		"#", "\\#",
-		"!", "\\!",
-		"[", "\\[",
-		"]", "\\]",
-		"(", "\\(",
-		")", "\\)",
-	)
-	return r.Replace(s)
 }
