@@ -210,7 +210,7 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 
 	// Collect map fields and gather stats
 	var mapFields []*discordgo.MessageEmbedField
-	for _, r := range m.Rounds {
+	for i, r := range m.Rounds {
 		if len(r.Teams) < 2 {
 			continue
 		}
@@ -250,8 +250,9 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 			winnerTeamName = "Tie"
 		}
 
+		replayURL := fmt.Sprintf("https://replay2.pappa.aukko.net/player?faceit_match_id=%s&map_id=%d", m.MatchID, i+1)
 		mapFieldName := fmt.Sprintf("%s %s:%s", r.RoundStats.Map, t1.TeamStats.FinalScore, t2.TeamStats.FinalScore)
-		mapFieldValue := fmt.Sprintf("🏆 %s", escapeDiscordLinkText(winnerTeamName))
+		mapFieldValue := fmt.Sprintf("🏆 %s\n[2D Demo](%s)", escapeDiscordLinkText(winnerTeamName), replayURL)
 
 		mapFields = append(mapFields, &discordgo.MessageEmbedField{
 			Name:   mapFieldName,
