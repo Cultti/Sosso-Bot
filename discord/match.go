@@ -251,8 +251,8 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 		}
 
 		replayURL := fmt.Sprintf("https://replay2.pappa.aukko.net/player?faceit_match_id=%s&map_id=%d", m.MatchID, i+1)
-		mapFieldName := fmt.Sprintf("%s %s:%s", r.RoundStats.Map, t1.TeamStats.FinalScore, t2.TeamStats.FinalScore)
-		mapFieldValue := fmt.Sprintf("🏆 %s [(2D demo)](%s)", escapeDiscordLinkText(winnerTeamName), replayURL)
+		mapFieldName := r.RoundStats.Map
+		mapFieldValue := fmt.Sprintf("%s:%s [(2D demo)](%s)\n🏆 %s", t1.TeamStats.FinalScore, t2.TeamStats.FinalScore, replayURL, escapeDiscordLinkText(winnerTeamName))
 
 		mapFields = append(mapFields, &discordgo.MessageEmbedField{
 			Name:   mapFieldName,
