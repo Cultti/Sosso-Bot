@@ -272,7 +272,7 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 			seen1[key] = true
 
 			if competitionID != "" && p.PlayerID != "" {
-				players1 = append(players1, fmt.Sprintf("- [%s](%s)", p.Nickname, playerURL(p.PlayerID, competitionID)))
+				players1 = append(players1, fmt.Sprintf("- %s", markdownCodeLink(p.Nickname, playerURL(p.PlayerID, competitionID))))
 			} else {
 				players1 = append(players1, fmt.Sprintf("- %s", p.Nickname))
 			}
@@ -288,7 +288,7 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 			seen2[key] = true
 
 			if competitionID != "" && p.PlayerID != "" {
-				players2 = append(players2, fmt.Sprintf("- [%s](%s)", p.Nickname, playerURL(p.PlayerID, competitionID)))
+				players2 = append(players2, fmt.Sprintf("- %s", markdownCodeLink(p.Nickname, playerURL(p.PlayerID, competitionID))))
 			} else {
 				players2 = append(players2, fmt.Sprintf("- %s", p.Nickname))
 			}
@@ -300,10 +300,10 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 	team2Display := team2
 	if competitionID != "" {
 		if id := teamIDs[team1]; id != "" {
-			team1Display = fmt.Sprintf("[%s](%s)", team1, teamURL(id, competitionID))
+			team1Display = markdownCodeLink(team1, teamURL(id, competitionID))
 		}
 		if id := teamIDs[team2]; id != "" {
-			team2Display = fmt.Sprintf("[%s](%s)", team2, teamURL(id, competitionID))
+			team2Display = markdownCodeLink(team2, teamURL(id, competitionID))
 		}
 	}
 
@@ -388,6 +388,11 @@ func teamURL(teamID, competitionID string) string {
 
 func playerURL(playerID, competitionID string) string {
 	return fmt.Sprintf("https://pappa.aukko.net/player/%s/%s", competitionID, playerID)
+}
+
+func markdownCodeLink(name, url string) string {
+	escapedName := strings.ReplaceAll(name, "`", "\\`")
+	return fmt.Sprintf("[`%s`](%s)", escapedName, url)
 }
 
 func matchCompetitionID(m *faceit.MatchData) string {
