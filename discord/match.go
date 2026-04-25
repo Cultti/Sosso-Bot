@@ -16,6 +16,17 @@ import (
 var ownerNotifyMu sync.Mutex
 var ownerNotifyLastSent = map[string]time.Time{}
 
+var mapNameTranslations = map[string]string{
+	"de_dust":     "Dust II",
+	"de_ancient":  "Ancient",
+	"de_anubis":   "Anubis",
+	"de_inferno":  "Inferno",
+	"de_mirage":   "Mirage",
+	"de_nuke":     "Nuke",
+	"de_overpass": "Overpass",
+	"de_cache":    "Cache",
+}
+
 func SendMessageInfo(s *discordgo.Session, matchId, league string) {
 	const maxTries = 240
 	const retryDelay = time.Minute
@@ -251,7 +262,8 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 		}
 
 		replayURL := fmt.Sprintf("https://replay2.pappa.aukko.net/player?faceit_match_id=%s&map_id=%d", m.MatchID, i+1)
-		mapFieldName := fmt.Sprintf("%s %s:%s", r.RoundStats.Map, t1.TeamStats.FinalScore, t2.TeamStats.FinalScore)
+		translatedMapName := translateMapName(r.RoundStats.Map)
+		mapFieldName := fmt.Sprintf("%s %s:%s", translatedMapName, t1.TeamStats.FinalScore, t2.TeamStats.FinalScore)
 		mapFieldValue := fmt.Sprintf("🏆 %s\n[2D Demo](%s)", winnerTeamName, replayURL)
 
 		mapFields = append(mapFields, &discordgo.MessageEmbedField{
@@ -402,4 +414,12 @@ func matchCompetitionID(m *faceit.MatchData) string {
 		}
 	}
 	return ""
+}
+
+func translateMapName(mapKey string) string {
+	normalized := strings.ToLower(strings.TrimSpace(mapKey))
+	if name, ok := mapNameTranslations[normalized]; ok {
+		return name
+	}
+	return mapKey
 }
