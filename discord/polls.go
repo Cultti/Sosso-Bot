@@ -7,7 +7,14 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func createPelipaivaPoll(s *discordgo.Session, channelID, vihollinen string) {
+func pollMention(roleID string) (string, *discordgo.MessageAllowedMentions) {
+	if roleID == "" {
+		return "@everyone", &discordgo.MessageAllowedMentions{Parse: []discordgo.AllowedMentionType{discordgo.AllowedMentionTypeEveryone}}
+	}
+	return fmt.Sprintf("<@&%s>", roleID), &discordgo.MessageAllowedMentions{Roles: []string{roleID}}
+}
+
+func createPelipaivaPoll(s *discordgo.Session, channelID, vihollinen, roleID string) {
 	now := time.Now()
 	offset := int(time.Monday - now.Weekday())
 	if offset > 0 {
@@ -36,9 +43,10 @@ func createPelipaivaPoll(s *discordgo.Session, channelID, vihollinen string) {
 	_, week := nextMonday.ISOWeek()
 	description := fmt.Sprintf("Viikon %d pelipäivä. Vihollinen %s.", week, vihollinen)
 
+	mention, allowedMentions := pollMention(roleID)
 	_, err := s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
-		Content:         "@everyone",
-		AllowedMentions: &discordgo.MessageAllowedMentions{Parse: []discordgo.AllowedMentionType{discordgo.AllowedMentionTypeEveryone}},
+		Content:         mention,
+		AllowedMentions: allowedMentions,
 		Poll: &discordgo.Poll{
 			Question:         discordgo.PollMedia{Text: description},
 			AllowMultiselect: true,
@@ -51,7 +59,7 @@ func createPelipaivaPoll(s *discordgo.Session, channelID, vihollinen string) {
 	}
 }
 
-func createHarkkaPoll(s *discordgo.Session, channelID, kuvaus string) {
+func createHarkkaPoll(s *discordgo.Session, channelID, kuvaus, roleID string) {
 	days := []string{"Tiistai", "Keskiviikko", "Torstai", "Perjantai", "Lauantai"}
 	var answers []discordgo.PollAnswer
 	for _, day := range days {
@@ -64,9 +72,10 @@ func createHarkkaPoll(s *discordgo.Session, channelID, kuvaus string) {
 			})
 		}
 	}
+	mention, allowedMentions := pollMention(roleID)
 	_, err := s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
-		Content:         "@everyone",
-		AllowedMentions: &discordgo.MessageAllowedMentions{Parse: []discordgo.AllowedMentionType{discordgo.AllowedMentionTypeEveryone}},
+		Content:         mention,
+		AllowedMentions: allowedMentions,
 		Poll: &discordgo.Poll{
 			Question:         discordgo.PollMedia{Text: kuvaus},
 			AllowMultiselect: true,
