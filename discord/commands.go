@@ -16,6 +16,11 @@ func registerCommands(s *discordgo.Session, guildID string) {
 				Name:        "vihollinen",
 				Description: "Kenen kanssa pelataan?",
 				Required:    true,
+			}, {
+				Type:        discordgo.ApplicationCommandOptionRole,
+				Name:        "tagi",
+				Description: "Mainittava rooli (oletus @everyone)",
+				Required:    false,
 			}},
 		},
 		{
@@ -26,6 +31,11 @@ func registerCommands(s *discordgo.Session, guildID string) {
 				Name:        "kuvaus",
 				Description: "Harkan kuvaus",
 				Required:    true,
+			}, {
+				Type:        discordgo.ApplicationCommandOptionRole,
+				Name:        "tagi",
+				Description: "Mainittava rooli (oletus @everyone)",
+				Required:    false,
 			}},
 		},
 		{

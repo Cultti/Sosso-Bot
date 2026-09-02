@@ -216,6 +216,7 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	switch i.ApplicationCommandData().Name {
 	case "pelipaiva":
 		vihollinen := i.ApplicationCommandData().Options[0].StringValue()
+		roleID := optionRoleID(i.ApplicationCommandData().Options, "tagi", i.GuildID)
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
@@ -223,10 +224,11 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
-		createPelipaivaPoll(s, i.ChannelID, vihollinen)
+		createPelipaivaPoll(s, i.ChannelID, vihollinen, roleID)
 
 	case "harkka":
 		kuvaus := i.ApplicationCommandData().Options[0].StringValue()
+		roleID := optionRoleID(i.ApplicationCommandData().Options, "tagi", i.GuildID)
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
@@ -234,8 +236,24 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
-		createHarkkaPoll(s, i.ChannelID, kuvaus)
+		createHarkkaPoll(s, i.ChannelID, kuvaus, roleID)
 	}
+}
+
+// optionRoleID returns the role ID of the named role option, or "" if the
+// option is missing or refers to the guild's @everyone role.
+func optionRoleID(options []*discordgo.ApplicationCommandInteractionDataOption, name, guildID string) string {
+	for _, opt := range options {
+		if opt.Name == name && opt.Type == discordgo.ApplicationCommandOptionRole {
+			roleID, _ := opt.Value.(string)
+			if roleID == guildID {
+				// Selecting the @everyone role falls back to the default mention.
+				return ""
+			}
+			return roleID
+		}
+	}
+	return ""
 }
 
 func handleSubscriontionsCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {

@@ -318,15 +318,17 @@
             
             <h3>Pelipäivän äänestys</h3>
             <div class="command">
-                <div class="command-name"><code>/pelipaiva vihollinen:"Vastustajan nimi"</code></div>
+                <div class="command-name"><code>/pelipaiva vihollinen:"Vastustajan nimi" tagi:@rooli</code></div>
                 <p>Luo äänestyksen viikon pelipäivästä. Botti ehdottaa seuraavan viikon päiviä, 
-                ja joukkue voi äänestää parhaiten sopivasta ajankohdasta.</p>
+                ja joukkue voi äänestää parhaiten sopivasta ajankohdasta. Valinnaisella 
+                <code>tagi</code>-parametrilla voit valita mainittavan roolin (oletuksena @everyone).</p>
             </div>
 
             <h3>Harjoituspäivän äänestys</h3>
             <div class="command">
-                <div class="command-name"><code>/harkka kuvaus:"Harjoituksen kuvaus"</code></div>
-                <p>Luo äänestyksen harjoituspäivästä samoilla periaatteilla kuin pelipäivä-äänestys.</p>
+                <div class="command-name"><code>/harkka kuvaus:"Harjoituksen kuvaus" tagi:@rooli</code></div>
+                <p>Luo äänestyksen harjoituspäivästä samoilla periaatteilla kuin pelipäivä-äänestys. 
+                Valinnaisella <code>tagi</code>-parametrilla voit valita mainittavan roolin (oletuksena @everyone).</p>
             </div>
         </div>
 
