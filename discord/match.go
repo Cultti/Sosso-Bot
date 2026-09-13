@@ -377,12 +377,8 @@ func buildMatchEmbed(m *faceit.MatchData, league string) *discordgo.MessageEmbed
 		Title:       title,
 		Description: description,
 		Color:       0x2ecc71,
-		Footer: &discordgo.MessageEmbedFooter{
-			Text:    "Powered by ArmaFinland.fi",
-			IconURL: "https://armafinland.fi/logot/images/armafin-logo-200px.png",
-		},
-		URL:    m.FaceitURL(),
-		Fields: allFields,
+		URL:         m.FaceitURL(),
+		Fields:      allFields,
 	}
 }
 
@@ -391,15 +387,15 @@ func LeagueToURL(competitionID string) (string, error) {
 	if strings.TrimSpace(competitionID) == "" {
 		return "", fmt.Errorf("missing competition ID")
 	}
-	return fmt.Sprintf("https://pappa.aukko.net/division/%s", competitionID), nil
+	return fmt.Sprintf("https://stats.pappaliiga.fi/cs/tournament/%s", competitionID), nil
 }
 
 func teamURL(teamID, competitionID string) string {
-	return fmt.Sprintf("https://pappa.aukko.net/team/%s/%s", competitionID, teamID)
+	return fmt.Sprintf("https://stats.pappaliiga.fi/cs/team/%s?tournamentId=%s", teamID, competitionID)
 }
 
 func playerURL(playerID, competitionID string) string {
-	return fmt.Sprintf("https://pappa.aukko.net/player/%s/%s", competitionID, playerID)
+	return fmt.Sprintf("https://stats.pappaliiga.fi/cs/player/%s?tournamentId=%s", playerID, competitionID)
 }
 
 func markdownCodeLink(name, url string) string {
